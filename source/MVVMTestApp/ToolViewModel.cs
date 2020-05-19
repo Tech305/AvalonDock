@@ -1,43 +1,38 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-
-namespace AvalonDock.MVVMTestApp
+﻿namespace AvalonDock.MVVMTestApp
 {
-    class ToolViewModel : PaneViewModel
-    {
-        public ToolViewModel(string name)
-        {
-            Name = name;
-            Title = name;
-        }
+	internal class ToolViewModel : PaneViewModel
+	{
+		#region fields
+		private bool _isVisible = true;
+		#endregion fields
 
-        public string Name
-        {
-            get;
-            private set;
-        }
+		#region constructor
+		/// <summary>
+		/// Class constructor
+		/// </summary>
+		/// <param name="name"></param>
+		public ToolViewModel(string name)
+		{
+			Name = name;
+			Title = name;
+		}
+		#endregion constructor
 
+		#region Properties
+		public string Name { get; private set; }
 
-        #region IsVisible
-
-        private bool _isVisible = true;
-        public bool IsVisible
-        {
-            get { return _isVisible; }
-            set
-            {
-                if (_isVisible != value)
-                {
-                    _isVisible = value;
-                    RaisePropertyChanged("IsVisible");
-                }
-            }
-        }
-
-        #endregion
-
-
-    }
+		public bool IsVisible
+		{
+			get => _isVisible;
+			set
+			{
+				if (_isVisible != value)
+				{
+					_isVisible = value;
+					RaisePropertyChanged(nameof(IsVisible));
+				}
+			}
+		}
+		#endregion Properties
+	}
 }

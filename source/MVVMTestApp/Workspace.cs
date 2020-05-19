@@ -1,192 +1,183 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text;
 using System.Collections.ObjectModel;
 using System.Windows.Input;
 using Microsoft.Win32;
 using System.IO;
 using System.Windows;
-using Xceed.Wpf.AvalonDock.Layout;
 
 namespace AvalonDock.MVVMTestApp
 {
-    class Workspace : ViewModelBase
-    {
-        protected Workspace()
-        { 
+	internal class Workspace : ViewModelBase
+	{
+		#region fields
+		static Workspace _this = new Workspace();
 
-        }
+		ToolViewModel[] _tools = null;
+		private ObservableCollection<FileViewModel> _files = new ObservableCollection<FileViewModel>();
+		private ReadOnlyObservableCollection<FileViewModel> _readonyFiles = null;
+		private FileViewModel _activeDocument = null;
+		FileStatsViewModel _fileStats = null;
+		RelayCommand _openCommand = null;
+		RelayCommand _newCommand = null;
+		#endregion fields
 
-        static Workspace _this = new Workspace();
+		#region constructors
+		/// <summary>
+		/// Class constructor
+		/// </summary>
+		protected Workspace()
+		{
+		}
+		#endregion constructors
 
-        public static Workspace This
-        {
-            get { return _this; }
-        }
+		public event EventHandler ActiveDocumentChanged;
 
+		#region properties
+		public static Workspace This => _this;
 
-        ObservableCollection<FileViewModel> _files = new ObservableCollection<FileViewModel>();
-        ReadOnlyObservableCollection<FileViewModel> _readonyFiles = null;
-        public ReadOnlyObservableCollection<FileViewModel> Files
-        {
-            get
-            {
-                if (_readonyFiles == null)
-                    _readonyFiles = new ReadOnlyObservableCollection<FileViewModel>(_files);
+		public ReadOnlyObservableCollection<FileViewModel> Files
+		{
+			get
+			{
+				if (_readonyFiles == null)
+					_readonyFiles = new ReadOnlyObservableCollection<FileViewModel>(_files);
 
-                return _readonyFiles;
-            }
-        }
+				return _readonyFiles;
+			}
+		}
 
-        ToolViewModel[] _tools = null;
+		public IEnumerable<ToolViewModel> Tools
+		{
+			get
+			{
+				if (_tools == null)
+					_tools = new ToolViewModel[] { FileStats };
+				return _tools;
+			}
+		}
 
-        public IEnumerable<ToolViewModel> Tools
-        {
-            get
-            {
-                if (_tools == null)
-                    _tools = new ToolViewModel[] { FileStats };
-                return _tools;
-            }
-        }
+		public FileStatsViewModel FileStats
+		{
+			get
+			{
+				if (_fileStats == null)
+					_fileStats = new FileStatsViewModel();
 
-        FileStatsViewModel _fileStats = null;
-        public FileStatsViewModel FileStats
-        {
-            get
-            {
-                if (_fileStats == null)
-                    _fileStats = new FileStatsViewModel();
+				return _fileStats;
+			}
+		}
 
-                return _fileStats;
-            }
-        }
+		public ICommand OpenCommand
+		{
+			get
+			{
+				if (_openCommand == null)
+				{
+					_openCommand = new RelayCommand((p) => OnOpen(p), (p) => CanOpen(p));
+				}
 
-        #region OpenCommand
-        RelayCommand _openCommand = null;
-        public ICommand OpenCommand
-        {
-            get
-            {
-                if (_openCommand == null)
-                {
-                    _openCommand = new RelayCommand((p) => OnOpen(p), (p) => CanOpen(p));
-                }
+				return _openCommand;
+			}
+		}
 
-                return _openCommand;
-            }
-        }
+		public ICommand NewCommand
+		{
+			get
+			{
+				if (_newCommand == null)
+				{
+					_newCommand = new RelayCommand((p) => OnNew(p), (p) => CanNew(p));
+				}
 
-        private bool CanOpen(object parameter)
-        {
-            return true;
-        }
+				return _newCommand;
+			}
+		}
 
-        private void OnOpen(object parameter)
-        {
-            var dlg = new OpenFileDialog();
-            if (dlg.ShowDialog().GetValueOrDefault())
-            {
-                var fileViewModel = Open(dlg.FileName);
-                ActiveDocument = fileViewModel;
-            }
-        }
+		public FileViewModel ActiveDocument
+		{
+			get => _activeDocument;
+			set
+			{
+				if (_activeDocument != value)
+				{
+					_activeDocument = value;
+					RaisePropertyChanged(nameof(ActiveDocument));
+					if (ActiveDocumentChanged != null)
+						ActiveDocumentChanged(this, EventArgs.Empty);
+				}
+			}
+		}
+		#endregion properties
 
-        public FileViewModel Open(string filepath)
-        {
-            var fileViewModel = _files.FirstOrDefault(fm => fm.FilePath == filepath);
-            if (fileViewModel != null)
-                return fileViewModel;
+		#region methods
+		internal void Close(FileViewModel fileToClose)
+		{
+			if (fileToClose.IsDirty)
+			{
+				var res = MessageBox.Show(string.Format("Save changes for file '{0}'?", fileToClose.FileName), "AvalonDock Test App", MessageBoxButton.YesNoCancel);
+				if (res == MessageBoxResult.Cancel)
+					return;
+				if (res == MessageBoxResult.Yes)
+				{
+					Save(fileToClose);
+				}
+			}
 
-            fileViewModel = new FileViewModel(filepath);
-            _files.Add(fileViewModel);
-            return fileViewModel;
-        }
+			_files.Remove(fileToClose);
+		}
 
-        #endregion 
+		internal void Save(FileViewModel fileToSave, bool saveAsFlag = false)
+		{
+			if (fileToSave.FilePath == null || saveAsFlag)
+			{
+				var dlg = new SaveFileDialog();
+				if (dlg.ShowDialog().GetValueOrDefault())
+					fileToSave.FilePath = dlg.SafeFileName;
+			}
 
-        #region NewCommand
-        RelayCommand _newCommand = null;
-        public ICommand NewCommand
-        {
-            get
-            {
-                if (_newCommand == null)
-                {
-                    _newCommand = new RelayCommand((p) => OnNew(p), (p) => CanNew(p));
-                }
+			File.WriteAllText(fileToSave.FilePath, fileToSave.TextContent);
+			ActiveDocument.IsDirty = false;
+		}
 
-                return _newCommand;
-            }
-        }
+		internal FileViewModel Open(string filepath)
+		{
+			var fileViewModel = _files.FirstOrDefault(fm => fm.FilePath == filepath);
+			if (fileViewModel != null)
+				return fileViewModel;
 
-        private bool CanNew(object parameter)
-        {
-            return true;
-        }
+			fileViewModel = new FileViewModel(filepath);
+			_files.Add(fileViewModel);
+			return fileViewModel;
+		}
 
-        private void OnNew(object parameter)
-        {
-            _files.Add(new FileViewModel());
-            ActiveDocument = _files.Last();
-        }
+		#region OpenCommand
+		private bool CanOpen(object parameter) => true;
 
-        #endregion 
+		private void OnOpen(object parameter)
+		{
+			var dlg = new OpenFileDialog();
+			if (dlg.ShowDialog().GetValueOrDefault())
+			{
+				var fileViewModel = Open(dlg.FileName);
+				ActiveDocument = fileViewModel;
+			}
+		}
+		#endregion OpenCommand
 
-        #region ActiveDocument
+		#region NewCommand
+		private bool CanNew(object parameter)
+		{
+			return true;
+		}
 
-        private FileViewModel _activeDocument = null;
-        public FileViewModel ActiveDocument
-        {
-            get { return _activeDocument; }
-            set
-            {
-                if (_activeDocument != value)
-                {
-                    _activeDocument = value;
-                    RaisePropertyChanged("ActiveDocument");
-                    if (ActiveDocumentChanged != null)
-                        ActiveDocumentChanged(this, EventArgs.Empty);
-                }
-            }
-        }
-
-        public event EventHandler ActiveDocumentChanged;
-
-        #endregion
-
-
-        internal void Close(FileViewModel fileToClose)
-        {
-            if (fileToClose.IsDirty)
-            {
-                var res = MessageBox.Show(string.Format("Save changes for file '{0}'?", fileToClose.FileName), "AvalonDock Test App", MessageBoxButton.YesNoCancel);
-                if (res == MessageBoxResult.Cancel)
-                    return;
-                if (res == MessageBoxResult.Yes)
-                {
-                    Save(fileToClose);
-                }
-            }
-
-            _files.Remove(fileToClose);
-        }
-
-        internal void Save(FileViewModel fileToSave, bool saveAsFlag = false)
-        {
-            if (fileToSave.FilePath == null || saveAsFlag)
-            {
-                var dlg = new SaveFileDialog();
-                if (dlg.ShowDialog().GetValueOrDefault())
-                    fileToSave.FilePath = dlg.SafeFileName;
-            }
-
-            File.WriteAllText(fileToSave.FilePath, fileToSave.TextContent);
-            ActiveDocument.IsDirty = false;
-        }
-
-
-
-    }
+		private void OnNew(object parameter)
+		{
+			_files.Add(new FileViewModel());
+			ActiveDocument = _files.Last();
+		}
+		#endregion
+		#endregion methods
+	}
 }
